@@ -101,6 +101,39 @@
             color: #fff;
         }
 
+        #rotationCooldown {
+            display: none;
+            margin-top: 8px;
+        }
+
+        #rotationCooldownLabel {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            color: #bbb;
+            font-size: 12px;
+        }
+
+        #rotationCooldownTrack {
+            height: 8px;
+            overflow: hidden;
+            background: #0f0f23;
+            border: 1px solid #0f3460;
+            border-radius: 999px;
+        }
+
+        #rotationCooldownFill {
+            width: 0;
+            height: 100%;
+            background: #e94560;
+            border-radius: inherit;
+            transition: width 0.1s linear, background-color 0.2s;
+        }
+
+        #rotationCooldown.ready #rotationCooldownFill {
+            background: #00c853;
+        }
+
         #controls {
             display: none;
             flex-direction: column;
@@ -222,6 +255,15 @@
                     </div>
                     <button id="dropBtn">⬇ Hard Drop</button>
                     <button id="rotateBtn">🔄 Rotate</button>
+                    <div id="rotationCooldown" aria-live="polite">
+                        <div id="rotationCooldownLabel">
+                            <span>Rotation</span>
+                            <span id="rotationCooldownText">Ready</span>
+                        </div>
+                        <div id="rotationCooldownTrack" role="progressbar" aria-label="Rotation cooldown" aria-valuemin="0" aria-valuemax="3000" aria-valuenow="3000">
+                            <div id="rotationCooldownFill"></div>
+                        </div>
+                    </div>
                 </div>
                 <div class="instructions">
                     <p>Keyboard: Arrow keys to move, Space to drop, R to rotate</p>
@@ -249,10 +291,23 @@
         const BOARD_WIDTH = 10;
         const BOARD_HEIGHT = 20;
 
-        let socket = null;
-        let playerId = null;
+        const makePlayerToken = () => window.crypto && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+        const playerIdToken = sessionStorage.getItem('tetrisPlayerToken') || makePlayerToken();
+        sessionStorage.setItem('tetrisPlayerToken', playerIdToken);
+        let playerId = 0;
         let gameState = null;
         let isPlacement = false;
+        let actionMessage = '';
+        let actionMessageUntil = 0;
+        let lastStateVersion = -1;
+        let ignoreBeforeVersion = -1;
+        let localPieceShape = null;
+        let trackedPieceKey = '';
+        let trackedPieceY = 0;
+        let pendingRotation = false;
+        let rotationCooldownUntil = 0;
 
         const TETROMINO_SHAPES = {
             I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
@@ -264,26 +319,49 @@
             L: [[0,0,1],[1,1,1],[0,0,0]]
         };
 
-        function connect() {
-            socket = new WebSocket('ws://localhost:8080');
+        async function connect() {
+            while (true) {
+                try {
+                    const response = await fetch(`/api/state?id=${encodeURIComponent(playerIdToken)}`, {
+                        cache: 'no-store'
+                    });
+                    if (!response.ok) throw new Error(`State request failed: ${response.status}`);
+                    parseState(await response.text());
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                } catch (error) {
+                    console.error('Could not reach the game server:', error);
+                    document.getElementById('status').textContent = 'Connection lost. Reconnecting...';
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
 
-            socket.onopen = () => {
-                console.log('Connected to server');
-            };
-
-            socket.onmessage = (event) => {
-                parseState(event.data);
-            };
-
-            socket.onclose = () => {
-                document.getElementById('status').textContent = 'Disconnected. Reconnecting...';
-                setTimeout(connect, 2000);
-            };
         }
 
         function parseState(data) {
             const parts = data.split('|');
             if (parts[0] !== 'STATE') return;
+            const incomingVersion = Number(parts[11]);
+            if (Number.isFinite(incomingVersion) &&
+                incomingVersion < Math.max(lastStateVersion, ignoreBeforeVersion)) return;
+            if (Number.isFinite(incomingVersion)) {
+                lastStateVersion = incomingVersion;
+                if (incomingVersion >= ignoreBeforeVersion) ignoreBeforeVersion = -1;
+            }
+            const cooldownRemaining = Number(parts[12]);
+            if (Number.isFinite(cooldownRemaining)) {
+                rotationCooldownUntil = Date.now() + Math.max(0, cooldownRemaining);
+            }
+            const pieceData = parts[7].split(',');
+            const pieceType = pieceData[3];
+            const pieceY = parseInt(pieceData[1], 10);
+            const pieceKey = `${parts[3]}:${pieceType}:${pieceData[2]}`;
+            if (pieceKey !== trackedPieceKey || pieceY < trackedPieceY) {
+                localPieceShape = null;
+                trackedPieceKey = pieceKey;
+            }
+            trackedPieceY = pieceY;
+            const serverPieceShape = pieceData[4] ? decodePieceShape(pieceData[4], pieceType) : null;
+            if (serverPieceShape && !pendingRotation) localPieceShape = serverPieceShape;
 
             gameState = {
                 status: parts[1],
@@ -292,17 +370,39 @@
                 score1: parseInt(parts[4]),
                 score2: parseInt(parts[5]),
                 board: parseBoard(parts[6]),
-                pieceX: parseInt(parts[7].split(',')[0]),
-                pieceY: parseInt(parts[7].split(',')[1]),
-                pieceColor: parts[7].split(',')[2],
-                pieceType: parts[7].split(',')[3],
+                pieceX: parseInt(pieceData[0]),
+                pieceY: parseInt(pieceData[1]),
+                pieceColor: pieceData[2],
+                pieceType: pieceData[3],
+                pieceShape: (pendingRotation && localPieceShape) || serverPieceShape ||
+                            localPieceShape || TETROMINO_SHAPES[pieceType],
                 nextColor: parts[8].split(',')[0],
                 nextType: parts[8].split(',')[1],
-                winner: parts[9]
+                winner: parts[9],
+                playerId: parseInt(parts[10], 10)
             };
+            playerId = gameState.playerId;
 
             updateUI();
+            updateRotationCooldownUI();
             render();
+        }
+
+        function decodePieceShape(encodedShape, pieceType) {
+            if (!encodedShape) return TETROMINO_SHAPES[pieceType];
+            const size = parseInt(encodedShape[0], 10);
+            const cells = encodedShape.slice(encodedShape.indexOf(':') + 1);
+            if (!size || cells.length !== size * size) return TETROMINO_SHAPES[pieceType];
+            return Array.from({ length: size }, (_, row) =>
+                Array.from({ length: size }, (_, column) => Number(cells[row * size + column]))
+            );
+        }
+
+        function rotateShapeClockwise(shape) {
+            const size = shape.length;
+            return Array.from({ length: size }, (_, row) =>
+                Array.from({ length: size }, (_, column) => shape[size - 1 - column][row])
+            );
         }
 
         function parseBoard(boardStr) {
@@ -345,9 +445,24 @@
                 showWinner();
             } else {
                 startBtn.style.display = 'none';
-                const isP1 = true; // Simplified - in real app, track player ID
-                const p1Placement = gameState.round === 'ROUND1';
-                isPlacement = p1Placement;
+                const isP1 = playerId === 1;
+                const isP2 = playerId === 2;
+                isPlacement = (gameState.round === 'ROUND1' && isP1) ||
+                              (gameState.round === 'ROUND2' && isP2);
+                document.getElementById('rotationCooldown').style.display = isPlacement || (!isP1 && !isP2)
+                    ? 'none'
+                    : 'block';
+                document.getElementById('rotateBtn').disabled = isPlacement || (!isP1 && !isP2) ||
+                    getRotationCooldownRemaining() > 0;
+
+                if (!isP1 && !isP2) {
+                    statusEl.textContent = `Game in progress (${gameState.playerCount}/2 players). This device is watching.`;
+                    roleEl.textContent = 'Spectating';
+                    roleEl.className = '';
+                    controls.style.display = 'none';
+                    return;
+                }
+                statusEl.textContent = `Game in progress (${gameState.playerCount}/2 players) — You are Player ${playerId}`;
 
                 if (gameState.round === 'ROUND1') {
                     roundEl.textContent = 'Round 1: Player 1 places, Player 2 sabotages';
@@ -372,6 +487,12 @@
                         controls.style.display = 'flex';
                     }
                 }
+            }
+
+            if (actionMessage && Date.now() < actionMessageUntil) {
+                statusEl.textContent = actionMessage;
+            } else {
+                actionMessage = '';
             }
         }
 
@@ -409,7 +530,7 @@
 
             // Draw current piece
             if (gameState.pieceType && gameState.pieceType !== 'NONE') {
-                const shape = TETROMINO_SHAPES[gameState.pieceType];
+                const shape = gameState.pieceShape || TETROMINO_SHAPES[gameState.pieceType];
                 for (let i = 0; i < shape.length; i++) {
                     for (let j = 0; j < shape[i].length; j++) {
                         if (shape[i][j] === 1) {
@@ -461,10 +582,69 @@
             document.getElementById('finalScore2').textContent = gameState.score2;
         }
 
+        function getRotationCooldownRemaining() {
+            return Math.max(0, rotationCooldownUntil - Date.now());
+        }
+
+        function updateRotationCooldownUI() {
+            const container = document.getElementById('rotationCooldown');
+            const fill = document.getElementById('rotationCooldownFill');
+            const text = document.getElementById('rotationCooldownText');
+            const track = document.getElementById('rotationCooldownTrack');
+            if (!container || !fill || !text || !track) return;
+
+            const remaining = getRotationCooldownRemaining();
+            const progress = 1 - remaining / 3000;
+            const ready = remaining === 0;
+            fill.style.width = `${Math.max(0, Math.min(1, progress)) * 100}%`;
+            text.textContent = ready ? 'Ready' : `Ready in ${(remaining / 1000).toFixed(1)}s`;
+            container.classList.toggle('ready', ready);
+            track.setAttribute('aria-valuenow', String(Math.round(progress * 3000)));
+
+            const rotateButton = document.getElementById('rotateBtn');
+            rotateButton.disabled = isPlacement || !gameState || gameState.status !== 'RUNNING' || ready === false;
+        }
+
         function sendCommand(cmd) {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(cmd);
+            if (cmd === 'ROTATE' && gameState) {
+                const currentShape = gameState.pieceShape || TETROMINO_SHAPES[gameState.pieceType];
+                if (gameState.status === 'RUNNING' && !isPlacement &&
+                    (playerId === 1 || playerId === 2) && getRotationCooldownRemaining() === 0 && currentShape) {
+                    ignoreBeforeVersion = lastStateVersion + 1;
+                    localPieceShape = rotateShapeClockwise(currentShape);
+                    gameState.pieceShape = localPieceShape;
+                    pendingRotation = true;
+                    rotationCooldownUntil = Date.now() + 3000;
+                    updateRotationCooldownUI();
+                    requestAnimationFrame(render);
+                }
             }
+            fetch('/api/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ id: playerIdToken, command: cmd })
+            }).then(async response => {
+                if (!response.ok) throw new Error(`Command failed: ${response.status}`);
+                const responseState = await response.text();
+                const responseParts = responseState.split('|');
+                const result = responseParts[13] || responseParts[12];
+                if (cmd === 'ROTATE' && result && result !== 'OK') {
+                    localPieceShape = null;
+                    pendingRotation = false;
+                }
+                if (cmd === 'ROTATE') pendingRotation = false;
+                parseState(responseState);
+                if (cmd === 'ROTATE' && (result === 'BLOCKED' || result === 'COOLDOWN')) {
+                    actionMessage = result === 'COOLDOWN'
+                        ? 'Wait 3 seconds before rotating again.'
+                        : 'Rotation blocked because the piece would overlap the board.';
+                    actionMessageUntil = Date.now() + 2500;
+                    updateUI();
+                }
+            }).catch(error => {
+                if (cmd === 'ROTATE') pendingRotation = false;
+                console.error('Command could not be sent:', error);
+            });
         }
 
         // Event listeners
@@ -482,6 +662,8 @@
         document.getElementById('downBtn').addEventListener('click', () => sendCommand('DOWN'));
         document.getElementById('dropBtn').addEventListener('click', () => sendCommand('DROP'));
         document.getElementById('rotateBtn').addEventListener('click', () => sendCommand('ROTATE'));
+
+        setInterval(updateRotationCooldownUI, 100);
 
         document.addEventListener('keydown', (e) => {
             if (!gameState || gameState.status !== 'RUNNING') return;

@@ -8,9 +8,17 @@ public class Piece {
 
     public Piece(Tetromino type) {
         this.type = type;
-        this.shape = type.getShape();
+        this.shape = copyShape(type.getShape());
         this.x = 5;
         this.y = 0;
+    }
+
+    private static int[][] copyShape(int[][] source) {
+        int[][] copy = new int[source.length][];
+        for (int i = 0; i < source.length; i++) {
+            copy[i] = source[i].clone();
+        }
+        return copy;
     }
 
     public Tetromino getType() { return type; }

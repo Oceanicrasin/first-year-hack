@@ -44,11 +44,15 @@ public class Board {
     }
 
     public boolean isValidRotation(Piece piece, int[][] newShape) {
+        return isValidRotationWithOffset(piece, newShape, 0, 0);
+    }
+
+    public boolean isValidRotationWithOffset(Piece piece, int[][] newShape, int dx, int dy) {
         for (int i = 0; i < newShape.length; i++) {
             for (int j = 0; j < newShape[i].length; j++) {
                 if (newShape[i][j] == 1) {
-                    int newX = piece.getX() + j;
-                    int newY = piece.getY() + i;
+                    int newX = piece.getX() + j + dx;
+                    int newY = piece.getY() + i + dy;
                     if (newX < 0 || newX >= WIDTH || newY >= HEIGHT) return false;
                     if (newY >= 0 && grid[newY][newX] != null) return false;
                 }

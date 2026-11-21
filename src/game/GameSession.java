@@ -77,6 +77,7 @@ public class GameSession {
     }
 
     public boolean rotate() {
+        if (!gameStarted || currentRound == Round.FINISHED || currentPiece == null) return false;
         int[][] rotated = new int[currentPiece.getShape()[0].length][currentPiece.getShape().length];
         int[][] shape = currentPiece.getShape();
         for (int i = 0; i < shape.length; i++) {
@@ -84,10 +85,18 @@ public class GameSession {
                 rotated[j][shape.length - 1 - i] = shape[i][j];
             }
         }
+        // Try rotation at current position first
         if (board.isValidRotation(currentPiece, rotated)) {
-            // Apply rotation directly
             currentPiece.rotate();
             return true;
+        }
+        // Try wall kicks: shift left or right to make rotation fit
+        for (int kick : new int[]{-1, 1, -2, 2, -3, 3}) {
+            if (board.isValidRotationWithOffset(currentPiece, rotated, kick, 0)) {
+                currentPiece.moveX(kick);
+                currentPiece.rotate();
+                return true;
+            }
         }
         return false;
     }
