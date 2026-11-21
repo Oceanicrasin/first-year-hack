@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Sabotage Tetris</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #e94560;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #status {
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding: 10px 20px;
+            background: #16213e;
+            border-radius: 8px;
+            border: 1px solid #0f3460;
+        }
+
+        #gameContainer {
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+        }
+
+        #board {
+            border: 3px solid #e94560;
+            border-radius: 4px;
+            background: #0f0f23;
+            box-shadow: 0 0 20px rgba(233, 69, 96, 0.3);
+        }
+
+        #sidePanel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .panel {
+            background: #16213e;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #0f3460;
+        }
+
+        .panel h3 {
+            color: #e94560;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        #nextPiece {
+            background: #0f0f23;
+            border: 1px solid #0f3460;
+        }
+
+        .score {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0f3460;
+        }
+
+        .score.p1 { color: #00f0f0; }
+        .score.p2 { color: #f0a000; }
+
+        #role {
+            font-size: 14px;
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .role-placement {
+            background: #00f000;
+            color: #000;
+        }
+
+        .role-sabotage {
+            background: #f00000;
+            color: #fff;
+        }
+
+        #controls {
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        button {
+            padding: 15px 25px;
+            font-size: 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: #0f3460;
+            color: #eee;
+            transition: all 0.2s;
+            min-width: 60px;
+        }
+
+        button:hover {
+            background: #e94560;
+            transform: scale(1.05);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        #startBtn {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: #e94560;
+            margin-top: 15px;
+        }
+
+        #winner {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(22, 33, 62, 0.95);
+            padding: 40px;
+            border-radius: 16px;
+            border: 3px solid #e94560;
+            text-align: center;
+            z-index: 1000;
+            box-shadow: 0 0 40px rgba(233, 69, 96, 0.5);
+        }
+
+        #winner h2 {
+            font-size: 36px;
+            color: #e94560;
+            margin-bottom: 20px;
+        }
+
+        #winner p {
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+
+        #restartBtn {
+            padding: 12px 30px;
+            font-size: 18px;
+            background: #0f3460;
+            margin-top: 15px;
+        }
+
+        .instructions {
+            font-size: 12px;
+            color: #888;
+            margin-top: 10px;
+        }
+
+        #roundInfo {
+            font-size: 16px;
+            color: #e94560;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎮 Sabotage Tetris 🎮</h1>
+    <div id="status">Waiting for players...</div>
+    <div id="roundInfo"></div>
+
+    <div id="gameContainer">
+        <canvas id="board" width="300" height="600"></canvas>
+
+        <div id="sidePanel">
+            <div class="panel">
+                <h3>Your Role</h3>
+                <div id="role">Waiting...</div>
+            </div>
+
+            <div class="panel">
+                <h3>Next Piece</h3>
+                <canvas id="nextPiece" width="120" height="120"></canvas>
+            </div>
+
+            <div class="panel">
+                <h3>Scores</h3>
+                <div>Player 1: <span id="score1" class="score p1">0</span></div>
+                <div>Player 2: <span id="score2" class="score p2">0</span></div>
+            </div>
+
+            <div class="panel">
+                <h3>Controls</h3>
+                <div id="controls">
+                    <div class="control-row">
+                        <button id="leftBtn">←</button>
+                        <button id="downBtn">↓</button>
+                        <button id="rightBtn">→</button>
+                    </div>
+                    <button id="dropBtn">⬇ Hard Drop</button>
+                    <button id="rotateBtn">🔄 Rotate</button>
+                </div>
+                <div class="instructions">
+                    <p>Keyboard: Arrow keys to move, Space to drop, R to rotate</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button id="startBtn">Start Game</button>
+
+    <div id="winner">
+        <h2 id="winnerText"></h2>
+        <p>Player 1: <span id="finalScore1"></span></p>
+        <p>Player 2: <span id="finalScore2"></span></p>
+        <button id="restartBtn">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('board');
+        const ctx = canvas.getContext('2d');
+        const nextCanvas = document.getElementById('nextPiece');
+        const nextCtx = nextCanvas.getContext('2d');
+
+        const CELL_SIZE = 30;
+        const BOARD_WIDTH = 10;
+        const BOARD_HEIGHT = 20;
+
+        let socket = null;
+        let playerId = null;
+        let gameState = null;
+        let isPlacement = false;
+
+        const TETROMINO_SHAPES = {
+            I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+            O: [[1,1],[1,1]],
+            T: [[0,1,0],[1,1,1],[0,0,0]],
+            S: [[0,1,1],[1,1,0],[0,0,0]],
+            Z: [[1,1,0],[0,1,1],[0,0,0]],
+            J: [[1,0,0],[1,1,1],[0,0,0]],
+            L: [[0,0,1],[1,1,1],[0,0,0]]
+        };
+
+        function connect() {
+            socket = new WebSocket('ws://localhost:8080');
+
+            socket.onopen = () => {
+                console.log('Connected to server');
+            };
+
+            socket.onmessage = (event) => {
+                parseState(event.data);
+            };
+
+            socket.onclose = () => {
+                document.getElementById('status').textContent = 'Disconnected. Reconnecting...';
+                setTimeout(connect, 2000);
+            };
+        }
+
+        function parseState(data) {
+            const parts = data.split('|');
+            if (parts[0] !== 'STATE') return;
+
+            gameState = {
+                status: parts[1],
+                playerCount: parseInt(parts[2]),
+                round: parts[3],
+                score1: parseInt(parts[4]),
+                score2: parseInt(parts[5]),
+                board: parseBoard(parts[6]),
+                pieceX: parseInt(parts[7].split(',')[0]),
+                pieceY: parseInt(parts[7].split(',')[1]),
+                pieceColor: parts[7].split(',')[2],
+                pieceType: parts[7].split(',')[3],
+                nextColor: parts[8].split(',')[0],
+                nextType: parts[8].split(',')[1],
+                winner: parts[9]
+            };
+
+            updateUI();
+            render();
+        }
+
+        function parseBoard(boardStr) {
+            const board = [];
+            for (let i = 0; i < BOARD_HEIGHT; i++) {
+                const row = [];
+                for (let j = 0; j < BOARD_WIDTH; j++) {
+                    const idx = i * BOARD_WIDTH + j;
+                    const cell = boardStr.split(',')[idx];
+                    row.push(cell === '.' ? null : cell);
+                }
+                board.push(row);
+            }
+            return board;
+        }
+
+        function updateUI() {
+            if (!gameState) return;
+
+            document.getElementById('score1').textContent = gameState.score1;
+            document.getElementById('score2').textContent = gameState.score2;
+
+            const statusEl = document.getElementById('status');
+            const roleEl = document.getElementById('role');
+            const roundEl = document.getElementById('roundInfo');
+            const controls = document.getElementById('controls');
+            const startBtn = document.getElementById('startBtn');
+
+            if (gameState.status === 'WAITING') {
+                statusEl.textContent = `Waiting for players (${gameState.playerCount}/2)...`;
+                roleEl.textContent = 'Waiting...';
+                roleEl.className = '';
+                controls.style.display = 'none';
+                startBtn.style.display = 'block';
+                roundEl.textContent = '';
+            } else if (gameState.round === 'FINISHED') {
+                statusEl.textContent = 'Game Over!';
+                controls.style.display = 'none';
+                startBtn.style.display = 'none';
+                showWinner();
+            } else {
+                startBtn.style.display = 'none';
+                const isP1 = true; // Simplified - in real app, track player ID
+                const p1Placement = gameState.round === 'ROUND1';
+                isPlacement = p1Placement;
+
+                if (gameState.round === 'ROUND1') {
+                    roundEl.textContent = 'Round 1: Player 1 places, Player 2 sabotages';
+                    if (isP1) {
+                        roleEl.textContent = '🎯 PLACEMENT - Move the piece!';
+                        roleEl.className = 'role-placement';
+                        controls.style.display = 'flex';
+                    } else {
+                        roleEl.textContent = '😈 SABOTAGE - Rotate to mess up!';
+                        roleEl.className = 'role-sabotage';
+                        controls.style.display = 'flex';
+                    }
+                } else {
+                    roundEl.textContent = 'Round 2: Player 2 places, Player 1 sabotages';
+                    if (isP1) {
+                        roleEl.textContent = '😈 SABOTAGE - Rotate to mess up!';
+                        roleEl.className = 'role-sabotage';
+                        controls.style.display = 'flex';
+                    } else {
+                        roleEl.textContent = '🎯 PLACEMENT - Move the piece!';
+                        roleEl.className = 'role-placement';
+                        controls.style.display = 'flex';
+                    }
+                }
+            }
+        }
+
+        function render() {
+            if (!gameState) return;
+
+            // Clear board
+            ctx.fillStyle = '#0f0f23';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid lines
+            ctx.strokeStyle = '#1a1a2e';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= BOARD_WIDTH; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * CELL_SIZE, 0);
+                ctx.lineTo(i * CELL_SIZE, canvas.height);
+                ctx.stroke();
+            }
+            for (let i = 0; i <= BOARD_HEIGHT; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, i * CELL_SIZE);
+                ctx.lineTo(canvas.width, i * CELL_SIZE);
+                ctx.stroke();
+            }
+
+            // Draw placed blocks
+            for (let i = 0; i < BOARD_HEIGHT; i++) {
+                for (let j = 0; j < BOARD_WIDTH; j++) {
+                    if (gameState.board[i][j]) {
+                        drawCell(ctx, j, i, gameState.board[i][j]);
+                    }
+                }
+            }
+
+            // Draw current piece
+            if (gameState.pieceType && gameState.pieceType !== 'NONE') {
+                const shape = TETROMINO_SHAPES[gameState.pieceType];
+                for (let i = 0; i < shape.length; i++) {
+                    for (let j = 0; j < shape[i].length; j++) {
+                        if (shape[i][j] === 1) {
+                            drawCell(ctx, gameState.pieceX + j, gameState.pieceY + i, gameState.pieceColor);
+                        }
+                    }
+                }
+            }
+
+            // Draw next piece preview
+            nextCtx.fillStyle = '#0f0f23';
+            nextCtx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+            if (gameState.nextType && gameState.nextType !== 'NONE') {
+                const shape = TETROMINO_SHAPES[gameState.nextType];
+                const offsetX = (nextCanvas.width - shape[0].length * 25) / 2;
+                const offsetY = (nextCanvas.height - shape.length * 25) / 2;
+                nextCtx.fillStyle = gameState.nextColor;
+                for (let i = 0; i < shape.length; i++) {
+                    for (let j = 0; j < shape[i].length; j++) {
+                        if (shape[i][j] === 1) {
+                            nextCtx.fillRect(offsetX + j * 25, offsetY + i * 25, 24, 24);
+                            nextCtx.strokeStyle = '#000';
+                            nextCtx.strokeRect(offsetX + j * 25, offsetY + i * 25, 24, 24);
+                        }
+                    }
+                }
+            }
+        }
+
+        function drawCell(context, x, y, color) {
+            context.fillStyle = color;
+            context.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE - 1, CELL_SIZE - 1);
+            context.strokeStyle = 'rgba(0,0,0,0.3)';
+            context.strokeRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE - 1, CELL_SIZE - 1);
+        }
+
+        function showWinner() {
+            const winnerDiv = document.getElementById('winner');
+            const winnerText = document.getElementById('winnerText');
+            winnerDiv.style.display = 'block';
+
+            if (gameState.winner === 'Draw') {
+                winnerText.textContent = "🤝 It's a Draw! 🤝";
+            } else {
+                winnerText.textContent = `🏆 ${gameState.winner} Wins! 🏆`;
+            }
+
+            document.getElementById('finalScore1').textContent = gameState.score1;
+            document.getElementById('finalScore2').textContent = gameState.score2;
+        }
+
+        function sendCommand(cmd) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(cmd);
+            }
+        }
+
+        // Event listeners
+        document.getElementById('startBtn').addEventListener('click', () => {
+            sendCommand('START');
+        });
+
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            document.getElementById('winner').style.display = 'none';
+            sendCommand('RESTART');
+        });
+
+        document.getElementById('leftBtn').addEventListener('click', () => sendCommand('LEFT'));
+        document.getElementById('rightBtn').addEventListener('click', () => sendCommand('RIGHT'));
+        document.getElementById('downBtn').addEventListener('click', () => sendCommand('DOWN'));
+        document.getElementById('dropBtn').addEventListener('click', () => sendCommand('DROP'));
+        document.getElementById('rotateBtn').addEventListener('click', () => sendCommand('ROTATE'));
+
+        document.addEventListener('keydown', (e) => {
+            if (!gameState || gameState.status !== 'RUNNING') return;
+
+            switch(e.key) {
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    sendCommand('LEFT');
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    sendCommand('RIGHT');
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    sendCommand('DOWN');
+                    break;
+                case ' ':
+                    e.preventDefault();
+                    sendCommand('DROP');
+                    break;
+                case 'r':
+                case 'R':
+                    sendCommand('ROTATE');
+                    break;
+            }
+        });
+
+        // Start connection
+        connect();
+    </script>
+</body>
+</html>
