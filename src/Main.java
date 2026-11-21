@@ -16,14 +16,14 @@ public class Main {
     private static final int PORT = 8080;
     private static final String WEBROOT = "webroot";
     private static final long SESSION_TIMEOUT_MS = 15_000;
-    private static final long SABOTAGE_ROTATION_COOLDOWN_MS = 3_000;
+    private static final long ROTATION_COOLDOWN_MS = 3_000;
 
     private static final Map<String, PlayerSession> players = new HashMap<>();
     private static GameSession gameSession = new GameSession();
     private static volatile boolean gameRunning = false;
     private static Timer gameTimer;
     private static long stateVersion = 0;
-    private static final long[] lastSabotageRotationAt = new long[3];
+    private static final long[] lastRotationAt = new long[3];
 
     private static class PlayerSession {
         int playerId;
@@ -113,7 +113,7 @@ public class Main {
             session.lastSeen = System.currentTimeMillis();
             startGameIfReady();
             state = serializeState() + "|" + session.playerId + "|" + stateVersion +
-                    "|" + getSabotageRotationCooldownRemaining(session.playerId);
+                    "|" + getRotationCooldownRemaining(session.playerId);
         }
         respond(exchange, 200, state, "text/plain; charset=utf-8");
     }
@@ -146,7 +146,7 @@ public class Main {
             String result = handleGameCommand(command, session.playerId);
             stateVersion++;
             String responseState = serializeState() + "|" + session.playerId + "|" + stateVersion +
-                    "|" + getSabotageRotationCooldownRemaining(session.playerId) + "|" + result;
+                    "|" + getRotationCooldownRemaining(session.playerId) + "|" + result;
             respond(exchange, 200, responseState, "text/plain; charset=utf-8");
             return;
         }
@@ -231,13 +231,14 @@ public class Main {
             case "DROP": if (isPlacementPlayer(playerId)) gameSession.hardDrop(); break;
             case "ROTATE":
                 if (!gameRunning) return "NOT_RUNNING";
-                if (!isSabotagePlayer(playerId)) return "NOT_SABOTAGE";
+                if (playerId < 1 || playerId > 2) return "NOT_PLAYER";
                 long now = System.currentTimeMillis();
-                if (now - lastSabotageRotationAt[playerId] < SABOTAGE_ROTATION_COOLDOWN_MS) {
+                boolean sabotageRotation = isSabotagePlayer(playerId);
+                if (sabotageRotation && now - lastRotationAt[playerId] < ROTATION_COOLDOWN_MS) {
                     return "COOLDOWN";
                 }
                 if (!gameSession.rotate()) return "BLOCKED";
-                lastSabotageRotationAt[playerId] = now;
+                if (sabotageRotation) lastRotationAt[playerId] = now;
                 return "OK";
             case "RESTART":
                 gameRunning = false;
@@ -246,7 +247,7 @@ public class Main {
                     gameTimer = null;
                 }
                 gameSession = new GameSession();
-                Arrays.fill(lastSabotageRotationAt, 0);
+                Arrays.fill(lastRotationAt, 0);
                 return "OK";
             default: return "UNKNOWN_COMMAND";
         }
@@ -267,10 +268,10 @@ public class Main {
                (round == GameSession.Round.ROUND2 && playerId == 1);
     }
 
-    private static long getSabotageRotationCooldownRemaining(int playerId) {
-        if (playerId < 1 || playerId > 2) return 0;
-        return Math.max(0, SABOTAGE_ROTATION_COOLDOWN_MS -
-                (System.currentTimeMillis() - lastSabotageRotationAt[playerId]));
+    private static long getRotationCooldownRemaining(int playerId) {
+        if (playerId < 1 || playerId > 2 || !isSabotagePlayer(playerId)) return 0;
+        return Math.max(0, ROTATION_COOLDOWN_MS -
+                (System.currentTimeMillis() - lastRotationAt[playerId]));
     }
 
     private static void respond(HttpExchange exchange, int status, String body, String contentType) throws IOException {

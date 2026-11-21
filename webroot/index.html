@@ -452,8 +452,7 @@
                 document.getElementById('rotationCooldown').style.display = isPlacement || (!isP1 && !isP2)
                     ? 'none'
                     : 'block';
-                document.getElementById('rotateBtn').disabled = isPlacement || (!isP1 && !isP2) ||
-                    getRotationCooldownRemaining() > 0;
+                document.getElementById('rotateBtn').disabled = (!isP1 && !isP2) || getRotationCooldownRemaining() > 0;
 
                 if (!isP1 && !isP2) {
                     statusEl.textContent = `Game in progress (${gameState.playerCount}/2 players). This device is watching.`;
@@ -467,7 +466,7 @@
                 if (gameState.round === 'ROUND1') {
                     roundEl.textContent = 'Round 1: Player 1 places, Player 2 sabotages';
                     if (isP1) {
-                        roleEl.textContent = '🎯 PLACEMENT - Move the piece!';
+                        roleEl.textContent = '🎯 PLACEMENT - Move and rotate the piece!';
                         roleEl.className = 'role-placement';
                         controls.style.display = 'flex';
                     } else {
@@ -482,7 +481,7 @@
                         roleEl.className = 'role-sabotage';
                         controls.style.display = 'flex';
                     } else {
-                        roleEl.textContent = '🎯 PLACEMENT - Move the piece!';
+                        roleEl.textContent = '🎯 PLACEMENT - Move and rotate the piece!';
                         roleEl.className = 'role-placement';
                         controls.style.display = 'flex';
                     }
@@ -602,19 +601,20 @@
             track.setAttribute('aria-valuenow', String(Math.round(progress * 3000)));
 
             const rotateButton = document.getElementById('rotateBtn');
-            rotateButton.disabled = isPlacement || !gameState || gameState.status !== 'RUNNING' || ready === false;
+            rotateButton.disabled = (playerId !== 1 && playerId !== 2) || !gameState ||
+                gameState.status !== 'RUNNING' || ready === false;
         }
 
         function sendCommand(cmd) {
             if (cmd === 'ROTATE' && gameState) {
                 const currentShape = gameState.pieceShape || TETROMINO_SHAPES[gameState.pieceType];
-                if (gameState.status === 'RUNNING' && !isPlacement &&
+                if (gameState.status === 'RUNNING' &&
                     (playerId === 1 || playerId === 2) && getRotationCooldownRemaining() === 0 && currentShape) {
                     ignoreBeforeVersion = lastStateVersion + 1;
                     localPieceShape = rotateShapeClockwise(currentShape);
                     gameState.pieceShape = localPieceShape;
                     pendingRotation = true;
-                    rotationCooldownUntil = Date.now() + 3000;
+                    if (!isPlacement) rotationCooldownUntil = Date.now() + 3000;
                     updateRotationCooldownUI();
                     requestAnimationFrame(render);
                 }
