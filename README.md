@@ -1,4 +1,4 @@
-# Sabotage Tetris
+# Tetris Sabotage
 
 An online two-player Tetris game with a **rotation-sabotage** mechanic, built with TypeScript + React + Supabase Realtime.
 
@@ -8,6 +8,17 @@ An online two-player Tetris game with a **rotation-sabotage** mechanic, built wi
 | 2 | Sabotages by rotating (3s cooldown) | Places the piece |
 
 After both rounds, the higher score wins. Scores are saved to a global leaderboard.
+
+### Abilities
+
+- **👁️ Blind (sabotager, `Z`)**: every 5 successful sabotage rotations earns a charge. Using it hides the placer's NEXT preview for 10 seconds.
+- **🛡️ Shield (placer, passive)**: clear 2+ rows back-to-back (on consecutive pieces, or 2+ rows at once) to earn a Shield. It automatically blocks the next Blind.
+
+Abilities reset when the roles swap. Tuning constants live at the top of `src/game/engine.ts`.
+
+### Audio
+
+Music (Korobeiniki, the public-domain folk tune) and sound effects are synthesised with the Web Audio API. Toggle them with the buttons in the top-right corner.
 
 ## Setup
 
@@ -22,7 +33,7 @@ One player clicks **Create room** and shares the 5-letter code; the other enters
 This works across the internet, since rooms are Supabase Realtime channels (Presence + Broadcast).
 The host's browser runs the game and broadcasts state; the guest sends their actions.
 
-Controls: ← → move, ↓ soft drop, Space hard drop, R rotate (on-screen buttons too).
+Controls: ← → move, ↓ soft drop, Space hard drop, R rotate, Z blind (sabotager). On-screen buttons too.
 
 ## Deploy
 

@@ -9,6 +9,8 @@ export interface Snapshot {
   game: GameState | null;
   /** Milliseconds until each player may sabotage-rotate again, measured when sent. */
   cooldown: [number, number];
+  /** Milliseconds the placer's NEXT preview stays hidden by a Blind, measured when sent. */
+  blindMs: number;
 }
 
 export type ClientAction = Action | 'RESTART';

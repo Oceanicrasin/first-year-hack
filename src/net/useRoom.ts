@@ -64,6 +64,7 @@ export function useRoom(name: string) {
         Math.max(0, ROTATION_COOLDOWN_MS - (now - lastRotation.current[0])),
         Math.max(0, ROTATION_COOLDOWN_MS - (now - lastRotation.current[1])),
       ],
+      blindMs: game.current ? Math.max(0, game.current.powers.blindUntil - now) : 0,
     };
     setSnapshot(snap);
     void channel.current?.send({ type: 'broadcast', event: 'snap', payload: snap });
@@ -99,9 +100,14 @@ export function useRoom(name: string) {
       const sabotage = player !== placing;
       const now = Date.now();
       if (sabotage && now - lastRotation.current[player - 1] < ROTATION_COOLDOWN_MS) return;
-      const result = applyAction(current, 'ROTATE');
+      const result = applyAction(current, 'ROTATE', { saboteur: sabotage, now });
       if (!result.ok) return;
       if (sabotage) lastRotation.current[player - 1] = now;
+      game.current = result.state;
+    } else if (action === 'BLIND') {
+      if (player === placing) return;
+      const result = applyAction(current, 'BLIND', { saboteur: true, now: Date.now() });
+      if (!result.ok) return;
       game.current = result.state;
     } else if (player === placing) {
       const result = applyAction(current, action);
